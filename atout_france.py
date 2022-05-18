@@ -4,7 +4,7 @@ import math
 import os
 import re
 from pprint import pprint
-from typing import Dict, Iterator
+from typing import Dict, Iterator, List
 
 import requests
 from bs4 import BeautifulSoup
@@ -57,12 +57,12 @@ class AtoutFranceClient:
     def _update_page_to_params(self, page: int = 1) -> None:
         self.params["_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_page"] = page
 
-    def _send_request(self: requests.models.Response):
+    def _send_request(self) -> requests.models.Response:
         response = requests.get(self.base_url, headers=self.headers, params=self.params)
         response.raise_for_status()
         return response
 
-    def _extract_hotels_from_response(self, response) -> Dict[str, str]:
+    def _extract_hotels_from_response(self, response: requests.models.Response) -> List[BeautifulSoup]:
         soup = BeautifulSoup(response.text, "html.parser")
         hotels = soup.select("div.facility-detail.js-facility-detail")
         datas = []
