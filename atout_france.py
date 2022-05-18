@@ -72,7 +72,7 @@ class AtoutFranceClient:
             datas.append(data)
         return datas
 
-    def parse_hotel(self, hotel: BeautifulSoup):
+    def parse_hotel(self, hotel: BeautifulSoup) -> Dict[str, str]:
         try:
             name = hotel.select_one("div.facility-detail-title > span").text.strip()
         except AttributeError:
