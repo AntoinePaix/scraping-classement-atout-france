@@ -149,7 +149,7 @@ class AtoutFranceClient:
 
     def download_all_datas(self, verbose: bool = True) -> None:
         filename = self._generate_filename()
-        with open(filename, mode="a") as file:
+        with open(filename, mode="a", encoding="utf-8") as file:
             generator_hotels = self.scrape_all_pages(verbose)
             first_hotel = next(generator_hotels)
 
@@ -162,6 +162,21 @@ class AtoutFranceClient:
                 csv_file.writerow(hotel)
 
         print(f"Data available in {os.path.abspath(filename)}.")
+
+    # Fixes the UTF-8 aberrations in the CSV file
+    def fix_csv_encoding(filename):
+        with open(filename, mode="r", encoding="utf-8") as file:
+            reader = csv.reader(file)
+            rows = []
+            for row in reader:
+                fixed_row = [cell.encode("latin1").decode("utf-8") for cell in row]
+                rows.append(fixed_row)
+
+        with open(filename, mode="w", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerows(rows)
+
+
 
 
 if __name__ == "__main__":
