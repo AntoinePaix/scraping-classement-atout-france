@@ -87,8 +87,22 @@ class AtoutFranceClient:
             location = hotel.select_one("i.iconq-location").parent.text.strip()
             location = re.sub("\n+", " ", location)
             location = re.sub(" +", " ", location)
+
+            match = re.search(r"^(.*?) - (\d{5}) (.+)$", location)
+            if match:
+                address = match.group(1).strip()
+                postal_code = match.group(2).strip()
+                city = match.group(3).strip()
+            else:
+                address = ""
+                postal_code = ""
+                city = ""
+
         except AttributeError:
             location = self.default
+            address = ""
+            postal_code = ""
+            city = ""
 
         try:
             telephone = hotel.find("div", text="Téléphone").find_next("div").text.strip()
@@ -119,12 +133,14 @@ class AtoutFranceClient:
             etoiles = self.default
 
         return {
+            "Catégorie": categorie,
             "Nom": name,
+            "Étoiles": etoiles,
+            "Adresse": address,
+            "Code postal": postal_code,
+            "Ville": city,
             "Email": email,
             "Téléphone": telephone,
-            "Localisation": location,
-            "Catégorie": categorie,
-            "Étoiles": etoiles,
             "Site": website,
             "URL": url,
         }
