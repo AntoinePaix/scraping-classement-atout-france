@@ -1,3 +1,5 @@
 venv
 data
 *.csv
+.vscode/settings.json
+.gitignore

@@ -5,6 +5,10 @@ import os
 import re
 from pprint import pprint
 from typing import Dict, Iterator, List
+from tqdm import tqdm
+from bs4.element import Tag
+import openpyxl
+
 
 import requests
 from bs4 import BeautifulSoup
@@ -14,7 +18,8 @@ class AtoutFranceClient:
     def __init__(self):
         self.base_url = "https://www.classement.atout-france.fr/recherche-etablissements"
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:98.0) Gecko/20100101 Firefox/100.0',  # Firefox
+            # Firefox
+            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:98.0) Gecko/20100101 Firefox/100.0',
             'Accept': '*/*',
             'Accept-Language': 'fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -37,6 +42,7 @@ class AtoutFranceClient:
 
         self.default = "NA"
         self.results_per_page = 16
+        # self.number_of_pages = 2
         self.number_of_pages = self._get_number_of_pages()
         self._update_page_to_params()
 
@@ -44,8 +50,10 @@ class AtoutFranceClient:
         response = self._send_request()
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        nb_results = soup.select_one("div.oec-links-result > div.result-value").text.strip()
-        nb_results = "".join(nb_results.strip("résultats correspondent à votre recherche").strip().split())
+        nb_results = soup.select_one(
+            "div.oec-links-result > div.result-value").text.strip()
+        nb_results = "".join(nb_results.strip(
+            "résultats correspondent à votre recherche").strip().split())
         nb_results = int(nb_results)
         return nb_results
 
@@ -58,7 +66,8 @@ class AtoutFranceClient:
         self.params["_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_page"] = page
 
     def _send_request(self) -> requests.models.Response:
-        response = requests.get(self.base_url, headers=self.headers, params=self.params)
+        response = requests.get(
+            self.base_url, headers=self.headers, params=self.params)
         response.raise_for_status()
         return response
 
@@ -79,19 +88,35 @@ class AtoutFranceClient:
             name = self.default
 
         try:
-            categorie = hotel.select_one("div.facility-detail-lead").text.strip()
+            category = hotel.select_one("div.facility-detail-lead").text.strip()
         except AttributeError:
-            categorie = self.default
+            category = self.default
 
         try:
             location = hotel.select_one("i.iconq-location").parent.text.strip()
             location = re.sub("\n+", " ", location)
             location = re.sub(" +", " ", location)
+
+            match = re.search(r"^(.*?) - (\d{5}) (.+)$", location)
+            if match:
+                address = match.group(1).strip()
+                postal_code = match.group(2).strip()
+                city = match.group(3).strip().upper()
+                if "ARRONDISSEMENT" in city:
+                    city = city.replace("ARRONDISSEMENT", "").strip()
+            else:
+                address = ""
+                postal_code = ""
+                city = ""
+
         except AttributeError:
             location = self.default
+            address = ""
+            postal_code = ""
+            city = ""
 
         try:
-            telephone = hotel.find("div", text="Téléphone").find_next("div").text.strip()
+            telephone = hotel.find("div", string="Téléphone").find_next("div").text.strip()
         except AttributeError:
             telephone = self.default
 
@@ -101,7 +126,7 @@ class AtoutFranceClient:
             website = self.default
 
         try:
-            email = hotel.find("div", text="Adresse email").find_next("div").text.strip()
+            email = hotel.find("div", string="Adresse email").find_next("div").text.strip()
         except AttributeError:
             email = self.default
 
@@ -119,50 +144,102 @@ class AtoutFranceClient:
             etoiles = self.default
 
         return {
+            "Type": category,
             "Nom": name,
+            "Étoiles": etoiles,
+            "Adresse": address,
+            "Code postal": postal_code,
+            "Ville": city,
             "Email": email,
             "Téléphone": telephone,
-            "Localisation": location,
-            "Catégorie": categorie,
-            "Étoiles": etoiles,
-            "Site": website,
-            "URL": url,
+            "Site de l'hôtel": website,
+            "Atout France URL": url,
         }
 
     def scrape_all_pages(self, verbose: bool = True) -> Iterator[Dict]:
-        for page in range(1, self.number_of_pages + 1):
+        for page in tqdm(range(1, self.number_of_pages + 1)):
             self._update_page_to_params(page)
             response = self._send_request()
             hotels = self._extract_hotels_from_response(response)
+
             for hotel in hotels:
                 datas = self.parse_hotel(hotel)
-                if verbose:
-                    pprint(datas)
-                    print(f"Scraping page {page}/{self.number_of_pages}")
 
                 yield datas
 
-    def _generate_filename(self) -> str:
+    def _generate_filename(self, filetype: str) -> str:
         timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M")
-        filename = f"atout-france-fr-{timestamp}.csv"
+        filename = f"hotels-atout-france-{timestamp}.{filetype}"
         return filename
 
     def download_all_datas(self, verbose: bool = True) -> None:
-        filename = self._generate_filename()
-        with open(filename, mode="a") as file:
-            generator_hotels = self.scrape_all_pages(verbose)
-            first_hotel = next(generator_hotels)
 
-            fieldnames = first_hotel.keys()
-            csv_file = csv.DictWriter(file, fieldnames=fieldnames)
-            csv_file.writeheader()
-            csv_file.writerow(first_hotel)
+        # Ask the user for the file format
+        while True:
+            print("Select the file extension:")
+            print("1: .csv")
+            print("2: .xlsx")
+            format = input("Enter your choice:")
+            if format == "1":
+                filetype = "csv"
+                break
+            elif format == "2":
+                filetype = "xlsx"
+                break
+            else:
+                print("Invalid choice. Please enter 1 or 2.")
 
-            for hotel in generator_hotels:
-                csv_file.writerow(hotel)
+        filename = self._generate_filename(filetype)
+        print("File name is:", filename)
+        if filetype == "csv":
+            with open(filename, mode="a", encoding="utf-8") as file:
+                hotels = self.scrape_all_pages(verbose)
+                first_hotel = next(hotels)
+                fieldnames = list(first_hotel.keys())
+                csv_file = csv.DictWriter(file, fieldnames=fieldnames, lineterminator='\n')
+                csv_file.writeheader()
+                csv_file.writerow(first_hotel)
 
-        print(f"Data available in {os.path.abspath(filename)}.")
+                for hotel in hotels:
+                    csv_file.writerow(hotel)
 
+
+            # Fixes the UTF-8 aberrations in the CSV file
+            with open(filename, mode="r", encoding="latin1") as file:
+                rows = csv.reader(file)
+                fixed_rows = []
+
+                for row in rows:
+                    fixed_row = [cell.encode("latin1").decode("utf-8", errors="replace") for cell in row]
+                    fixed_rows.append(fixed_row)
+
+            with open(filename, mode="w", encoding="utf-8", newline='') as file:
+                writer = csv.writer(file)
+                writer.writerows(fixed_rows)
+
+            print(f"CSV file {filename} encoding fixed.")
+
+        elif filetype == "xlsx":
+            workbook = openpyxl.Workbook()
+            worksheet = workbook.active
+
+            hotels = self.scrape_all_pages(verbose)
+            first_hotel = next(hotels)
+            fieldnames = list(first_hotel.keys())
+            worksheet.append(fieldnames)
+            worksheet.append(list(first_hotel.values()))
+
+            for hotel in hotels:
+                worksheet.append(list(hotel.values()))
+
+            workbook.save(filename)
+
+            print(f"Data available in {os.path.abspath(filename)}.")
+
+        else:
+            raise ValueError("Invalid file type. Must be 'csv' or 'xlsx'.")
+        
+        # Fixes the UTF-8 aberrations in the CSV file        
 
 if __name__ == "__main__":
     client = AtoutFranceClient()
