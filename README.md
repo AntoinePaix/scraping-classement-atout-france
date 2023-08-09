@@ -5,7 +5,7 @@ This is a python script that allows you to scrape the hotels listed on the site 
 ## To install this script:
 
 ``` bash
-git clone github.com/AntoinePaix/scraping-classement-atout-france
+git clone https://github.com/AntoinePaix/scraping-classement-atout-france
 cd scraping-classement-atout-france
 python3 -m venv venv
 source venv/bin/activate
