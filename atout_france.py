@@ -7,26 +7,41 @@ import os
 import re
 from pprint import pprint
 from typing import Iterator
+from typing import TypedDict
 
 import httpx
 from bs4 import BeautifulSoup
+from tqdm import tqdm
+
+
+class Hotel(TypedDict):
+    category: str
+    name: str
+    stars: str
+    address: str
+    postal_code: str
+    city: str
+    email: str
+    phone_number: str
+    website: str
+    url: str
 
 
 class AtoutFranceClient:
     def __init__(self):
         self.base_url = 'https://www.classement.atout-france.fr/recherche-etablissements'
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/116.0',  # Firefox
             'Accept': '*/*',
-            'Accept-Language': 'fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3',
             'Accept-Encoding': 'gzip, deflate',
-            'X-PJAX': 'true',
-            'X-Requested-With': 'XMLHttpRequest',
+            'Accept-Language': 'fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3',
             'Connection': 'keep-alive',
             'Referer': 'https://www.classement.atout-france.fr/',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
+            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/116.0',  # Firefox
+            'X-PJAX': 'true',
+            'X-Requested-With': 'XMLHttpRequest',
         }
         self.params = {
             'p_p_id': 'fr_atoutfrance_classementv2_portlet_facility_FacilitySearch',
@@ -45,7 +60,7 @@ class AtoutFranceClient:
         response = self._send_request(client)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
-        nb_results = soup.select_one('div.oec-links-result > div.result-value').text.strip()
+        nb_results = soup.select_one('div.oec-links-result > div.result-value').string.strip()
         nb_results = ''.join(nb_results.strip('résultats correspondent à votre recherche').strip().split())
         nb_results = int(nb_results)
         return nb_results
@@ -75,19 +90,19 @@ class AtoutFranceClient:
             datas.append(data)
         return datas
 
-    def parse_hotel(self, hotel: BeautifulSoup) -> dict[str, str]:
+    def parse_hotel(self, hotel: BeautifulSoup) -> Hotel:
         try:
-            name = hotel.select_one('div.facility-detail-title > span').text.strip()
+            name = hotel.select_one('div.facility-detail-title > span').string.strip()
         except AttributeError:
             name = self.default
 
         try:
-            categorie = hotel.select_one('div.facility-detail-lead').text.strip()
+            category = hotel.select_one('div.facility-detail-lead').string.strip()
         except AttributeError:
-            categorie = self.default
+            category = self.default
 
         try:
-            location = hotel.select_one('i.iconq-location').parent.text.strip()
+            location = hotel.select_one('i.iconq-location').parent.string.strip()
             location = re.sub('\n+', ' ', location)
             location = re.sub(' +', ' ', location)
 
@@ -109,9 +124,9 @@ class AtoutFranceClient:
             city = self.default
 
         try:
-            telephone = hotel.find('div', text='Téléphone').find_next('div').text.strip()
+            phone = hotel.find('div', string='Téléphone').find_next('div').string.strip()
         except AttributeError:
-            telephone = self.default
+            phone = self.default
 
         try:
             website = hotel.select_one('a.facility-detail-link.facility-detail-site').attrs['href']
@@ -119,7 +134,7 @@ class AtoutFranceClient:
             website = self.default
 
         try:
-            email = hotel.find('div', text='Adresse email').find_next('div').text.strip()
+            email = hotel.find('div', string='Adresse email').find_next('div').string.strip()
         except AttributeError:
             email = self.default
 
@@ -131,39 +146,37 @@ class AtoutFranceClient:
             url = self.default
 
         try:
-            etoiles = hotel.select('div.rate-wrapper > svg.svg.svg--star')
-            etoiles = str(len(etoiles))
+            stars = hotel.select('div.rate-wrapper > svg.svg.svg--star')
+            stars = str(len(stars))
         except AttributeError:
-            etoiles = self.default
+            stars = self.default
 
-        return {
-            'Catégorie': categorie,
-            'Nom': name,
-            'Étoiles': etoiles,
-            'Adresse': address,
-            'Code postal': postal_code,
-            'Ville': city,
-            'Email': email,
-            'Téléphone': telephone,
-            'Adresse complete': location,
-            'Site': website,
-            'URL': url,
-        }
+        return Hotel(
+            category=category,
+            name=name,
+            stars=stars,
+            address=address,
+            postal_code=postal_code,
+            city=city,
+            email=email,
+            phone_number=phone,
+            website=website,
+            url=url,
+        )
 
-    def scrape_all_pages(self, verbose: bool = True) -> Iterator[dict[str, str]]:
+    def scrape_all_pages(self, verbose: bool = True) -> Iterator[Hotel]:
         with httpx.Client(headers=self.headers) as client:
             num_pages = self._get_number_of_pages(client)
-            for page in range(1, num_pages + 1):
-                self._update_page_to_params(page)
-                response = self._send_request(client)
-                hotels = self._extract_hotels_from_response(response)
-                for hotel in hotels:
-                    datas = self.parse_hotel(hotel)
-                    if verbose:
-                        pprint(datas)
-                        print(f'Scraping page {page}/{num_pages}')
+            with tqdm(total=num_pages) as pbar:
+                for page in range(1, num_pages + 1):
+                    self._update_page_to_params(page)
+                    response = self._send_request(client)
+                    hotels = self._extract_hotels_from_response(response)
+                    for hotel in hotels:
+                        yield self.parse_hotel(hotel)
 
-                    yield datas
+                    if verbose:
+                        pbar.update(1)
 
     def _generate_filename(self) -> str:
         timestamp = datetime.datetime.now().strftime('%Y%m%d%H%M')
@@ -184,7 +197,7 @@ class AtoutFranceClient:
             for hotel in generator_hotels:
                 csv_file.writerow(hotel)
 
-        print(f'Data available in {os.path.abspath(filename)}.')
+        print(f'Data available in {os.path.abspath(filename)}')
 
 
 def main() -> int:
