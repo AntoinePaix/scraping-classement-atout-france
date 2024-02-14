@@ -3,15 +3,17 @@ import datetime
 import math
 import os
 import re
-from pprint import pprint
 from typing import Dict, Iterator, List
 from tqdm import tqdm
-from bs4.element import Tag
 import openpyxl
-
-
+import requests
+from PIL import Image
+from io import BytesIO
+import pytesseract
 import requests
 from bs4 import BeautifulSoup
+
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 
 class AtoutFranceClient:
@@ -44,6 +46,9 @@ class AtoutFranceClient:
         self.results_per_page = 16
         # self.number_of_pages = 2
         self.number_of_pages = self._get_number_of_pages()
+        self.user_pages = input(f"Enter number of pages to scrape (leave empty to scrape all {self.number_of_pages} detected): ")
+        if self.user_pages != "":
+            self.number_of_pages = int(self.user_pages)
         self._update_page_to_params()
 
     def _get_number_of_results(self) -> int:
@@ -82,6 +87,8 @@ class AtoutFranceClient:
         return datas
 
     def parse_hotel(self, hotel: BeautifulSoup) -> Dict[str, str]:
+        hotel_id = hotel.attrs["id"].split("-")[-1]
+
         try:
             name = hotel.select_one("div.facility-detail-title > span").text.strip()
         except AttributeError:
@@ -116,7 +123,15 @@ class AtoutFranceClient:
             city = ""
 
         try:
-            telephone = hotel.find("div", string="Téléphone").find_next("div").text.strip()
+            telephone_url = f"https://www.classement.atout-france.fr/recherche-etablissements?p_p_id=fr_atoutfrance_classementv2_portlet_facility_FacilitySearch&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_resource_id=%2Ffacility%2Fget-text-image&p_p_cacheability=cacheLevelPage&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_facilityId={hotel_id}&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_fieldType=phone_number&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_is_luxury_hotel=no&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_performSearch=1"
+            response = requests.get(telephone_url)
+            image = Image.open(BytesIO(response.content))
+           
+            telephone = pytesseract.image_to_string(image)
+            telephone = telephone.replace('"', '').replace("'", '').replace('‘', "").replace('O', '0').replace('o', '0').replace(' ', '').strip()
+            # sometimes a 0 is recognized at the beginning of the number
+            if len(telephone) > 10:
+                telephone = telephone[1:]
         except AttributeError:
             telephone = self.default
 
@@ -126,7 +141,11 @@ class AtoutFranceClient:
             website = self.default
 
         try:
-            email = hotel.find("div", string="Adresse email").find_next("div").text.strip()
+            email_url = f"https://www.classement.atout-france.fr/recherche-etablissements?p_p_id=fr_atoutfrance_classementv2_portlet_facility_FacilitySearch&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_resource_id=%2Ffacility%2Fget-text-image&p_p_cacheability=cacheLevelPage&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_facilityId={hotel_id}&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_fieldType=email&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_is_luxury_hotel=no&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_performSearch=1"
+            response = requests.get(email_url)
+            image = Image.open(BytesIO(response.content))
+
+            email = pytesseract.image_to_string(image).replace('"', "").strip()
         except AttributeError:
             email = self.default
 
