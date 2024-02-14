@@ -61,6 +61,10 @@ class AtoutFranceClient:
             else:
                 self.number_of_pages = int(self.user_pages)
                 break
+        if self.number_of_pages == 1:
+            print(f"Scraping only {self.number_of_pages} page.")
+        else:
+            print(f"Scraping {self.number_of_pages} pages.")
         self._update_page_to_params()
 
     def _get_number_of_results(self) -> int:
