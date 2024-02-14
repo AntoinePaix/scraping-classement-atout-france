@@ -43,12 +43,24 @@ class AtoutFranceClient:
         }
 
         self.default = "NA"
-        self.results_per_page = 16
-        # self.number_of_pages = 2
+
+        nb_results = self._get_number_of_results()
+        self.results_per_page = self._get_number_of_results_per_page()
         self.number_of_pages = self._get_number_of_pages()
-        self.user_pages = input(f"Enter number of pages to scrape (leave empty to scrape all {self.number_of_pages} detected): ")
-        if self.user_pages != "":
-            self.number_of_pages = int(self.user_pages)
+        print(
+            f"We found {nb_results} results on {self.number_of_pages} pages.")
+        print(f"Each page contains {self.results_per_page} results.")
+        while True:
+            self.user_pages = input(f"Enter the number of pages to scrape: ")
+            if self.user_pages == "":
+                break
+            elif not self.user_pages.isdigit():
+                print("Invalid input. Please enter a number.")
+            elif int(self.user_pages) < 1 or int(self.user_pages) > self.number_of_pages:
+                print(f"Invalid input. Please enter a number between 1 and {self.number_of_pages}.")
+            else:
+                self.number_of_pages = int(self.user_pages)
+                break
         self._update_page_to_params()
 
     def _get_number_of_results(self) -> int:
@@ -61,6 +73,13 @@ class AtoutFranceClient:
             "résultats correspondent à votre recherche").strip().split())
         nb_results = int(nb_results)
         return nb_results
+    
+    def _get_number_of_results_per_page(self) -> int:
+        response = self._send_request()
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        hotel_divs = soup.find_all('div', class_='facility-detail js-facility-detail')
+        return len(hotel_divs)
 
     def _get_number_of_pages(self) -> int:
         nb_results = self._get_number_of_results()
@@ -195,14 +214,15 @@ class AtoutFranceClient:
 
         # Ask the user for the file format
         while True:
-            print("Select the file extension:")
-            print("1: .csv")
-            print("2: .xlsx")
-            format = input("Enter your choice:")
-            if format == "1":
+            print("Select the file format:")
+            print("1: CSV")
+            print("2: Excel (XLSX)")
+            choice = input("Enter your choice (1 or 2): ")
+
+            if choice == "1":
                 filetype = "csv"
                 break
-            elif format == "2":
+            elif choice == "2":
                 filetype = "xlsx"
                 break
             else:
