@@ -343,10 +343,18 @@ def scrape_data(facility_id: int = 15187, full_scrape: bool = False):
         for info in main_info:
             if "Capacité d'accueil :" in info:
                 capacity_person = info.split(':')[1].split(' ')[0].strip()
-                capacity_accommodations = info.split(',')[1].split(' ')[0].strip()
-                accommodation_type = info.split(',')[1].split(' ')[1].strip().capitalize()
-                if accommodation_type == 'Unités':
-                    accommodation_type = "Unités d'habitations"
+            try:
+                if ',' in info:
+                    capacity_accommodations = info.split(',')[1].split(' ')[0].strip()
+                    accommodation_type = info.split(',')[1].split(' ')[1].strip().capitalize()
+                    if accommodation_type == 'Unités':
+                        accommodation_type = "Unités d'habitations"
+                else:
+                    capacity_accommodations = default_value
+                    accommodation_type = default_value
+            except IndexError:
+                capacity_accommodations = default_value
+                accommodation_type = default_value       
         try:
             open_dates = next((info.split('Du ')[1].strip() for info in main_info if 'Du ' in info), default_value)
             open_date = open_dates.split('au ')[0] + ' au ' + open_dates.split('au ')[1] if 'au ' in open_dates else default_value
@@ -458,7 +466,7 @@ if __name__ == "__main__":
         exit()
     
     if scrape_type == 'Test':
-        results = scrape_data(15187, False)
+        results = scrape_data(21317, False)
         print(results)
     else:
         facility_ids = main_page.get_all_facility_ids()
