@@ -38,9 +38,10 @@ class AtoutFranceGeneralClient:
             'p_p_lifecycle': '0',
             'p_p_state': 'normal',
             'p_p_mode': 'view',
-            '_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_performSearch': page,
+            '_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_performSearch': '1',
             '_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_is_luxury_hotel': 'no',
         }
+        
 
     def get_number_of_results(self):
         response = requests.get(
@@ -53,7 +54,7 @@ class AtoutFranceGeneralClient:
 
         # The findall function returns a list, so join the elements into a single string
         number_of_results = ''.join(number_of_results)
-        return number_of_results
+        return int(number_of_results)
 
     def get_number_of_pages(self):
         response = requests.get(
@@ -65,8 +66,11 @@ class AtoutFranceGeneralClient:
             return 1
         return int(pagination_div)
 
+    def _update_page_to_params(self, page: int = 1) -> None:
+        self.params["_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_page"] = page
+
     def get_facility_ids(self, page: int) -> List[str]:
-        self.params['p_pn'] = page
+        self._update_page_to_params(page)
         response = requests.get(
             self.base_url, headers=self.headers, params=self.params)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -79,11 +83,12 @@ class AtoutFranceGeneralClient:
         return datas
 
     def get_all_facility_ids(self) -> List[str]:
-        all_facility_ids = []
-        for page in tqdm(range(1, self.get_number_of_pages() + 1)):
-            all_facility_ids.extend(self.get_facility_ids(page))
-        return all_facility_ids
-    
+        all_ids = []
+        results = self.get_number_of_results()
+        for page in tqdm(range(1, self.get_number_of_pages() + 1), desc=f"Gathering {results} IDs", unit='pages', ):
+            all_ids.extend(self.get_facility_ids(page))
+        return all_ids
+
 
 
 class AtoutFranceFacilityClient:
@@ -330,25 +335,33 @@ def scrape_data(facility_id: int = 15187, full_scrape: bool = False):
             'class': 'facility-detail-cell'}).find('div', {'class': 'wrapper-list'}).find('ul').find_all('li')
         # Iterate over the li tags and return a text array with the text of each li tag
         main_info = [li.text.replace('\n', '').replace('\t', '') for li in li_tags]
-
-        capacity_person = main_info[0].split(' ')[2].replace(':', '')
-        capacity_accommodations = main_info[0].split(' ')[3].split(',')[1]
-        accommodation_type = main_info[0].split(' ')[4].strip().capitalize()
-        if accommodation_type == 'Unités':
-            accommodation_type = "Unités d'habitations"
         
+        capacity_person = default_value
+        capacity_accommodations = default_value
+        accommodation_type = default_value
+
+        for info in main_info:
+            if "Capacité d'accueil :" in info:
+                capacity_person = info.split(':')[1].split(' ')[0].strip()
+                capacity_accommodations = info.split(',')[1].split(' ')[0].strip()
+                accommodation_type = info.split(',')[1].split(' ')[1].strip().capitalize()
+                if accommodation_type == 'Unités':
+                    accommodation_type = "Unités d'habitations"
         try:
-            open_dates = main_info[1].split('Du ')[1].strip()
-            open_date = open_dates.split('au ')[0] + ' au ' + open_dates.split('au ')[1]
+            open_dates = next((info.split('Du ')[1].strip() for info in main_info if 'Du ' in info), default_value)
+            open_date = open_dates.split('au ')[0] + ' au ' + open_dates.split('au ')[1] if 'au ' in open_dates else default_value
         except IndexError:
             open_date = default_value
-                
+
     except AttributeError:
-        main_info = default_value
+        capacity_person = default_value
+        capacity_accommodations = default_value
+        accommodation_type = default_value
+        open_date = default_value
 
     try:
-        website = soup.find(
-            'a', {'class': 'facility-detail-link facility-detail-site'})['href']
+        website_link = soup.find('a', {'class': 'website'})
+        website = website_link['href'] if website_link is not None else None
     except AttributeError:
         website = default_value
     
@@ -378,11 +391,11 @@ def scrape_data(facility_id: int = 15187, full_scrape: bool = False):
         "Code postal": postal_code,
         "Ville": city,
         "Site web": website,
-        "Date de classification": classification_date,
-        "Capacité d'accueil": capacity_person,
-        "Type de logements": accommodation_type,
+        "Capacité d'accueil (pax)": capacity_person,
         "Nombre de logements": capacity_accommodations,
+        "Type de logements": accommodation_type,
         "Dates d'ouverture": open_date,
+        "Date de classification": classification_date,
         "Lien AF": af_url
     })
 
@@ -448,10 +461,10 @@ if __name__ == "__main__":
         results = scrape_data(15187, False)
         print(results)
     else:
-        print(f"Gathering all {number_of_results} IDs...")
         facility_ids = main_page.get_all_facility_ids()
+        # facility_ids = [1]
         results = []
-        for facility_id in tqdm(facility_ids):
+        for facility_id in tqdm(facility_ids, desc="Scraping pages", unit='pages'):
             results.append(scrape_data(facility_id, False if scrape_type == 'Fast (no contact phone or email)' else True))
             try:
                 if filetype == 'csv':
