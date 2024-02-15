@@ -7,7 +7,7 @@ from typing import Dict, Iterator, List
 from tqdm import tqdm
 import openpyxl
 import requests
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from io import BytesIO
 import pytesseract
 import requests
@@ -273,19 +273,18 @@ def scrape_data(facility_id: int = 15187, full_scrape: bool = False):
             image = Image.open(BytesIO(response.content))
             phone = pytesseract.image_to_string(image)
             phone = phone.replace('"', '').replace("'", '').replace('‘', "").replace('O', '0').replace('o', '0').replace(' ', '').replace('l', '1').strip()
-            # sometimes a 0 is recognized at the beginning of the number
             if len(phone) > 10:
                 phone = phone[1:]
-        except AttributeError:
+        except (AttributeError, UnidentifiedImageError) :
             phone = default_value
 
         try:
             email_url = f"https://www.classement.atout-france.fr/recherche-etablissements?p_p_id=fr_atoutfrance_classementv2_portlet_facility_FacilitySearch&p_p_lifecycle=2&p_p_state=normal&p_p_mode=view&p_p_resource_id=%2Ffacility%2Fget-text-image&p_p_cacheability=cacheLevelPage&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_facilityId={facility_id}&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_fieldType=email&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_is_luxury_hotel=no&_fr_atoutfrance_classementv2_portlet_facility_FacilitySearch_performSearch=1"
             response = requests.get(email_url)
             image = Image.open(BytesIO(response.content))
-
             email = pytesseract.image_to_string(image).replace('"', "").strip()
-        except AttributeError:
+            
+        except (AttributeError, UnidentifiedImageError) :
             email = default_value
     
     try:
@@ -466,7 +465,7 @@ if __name__ == "__main__":
         exit()
     
     if scrape_type == 'Test':
-        results = scrape_data(21317, False)
+        results = scrape_data(10499, True)
         print(results)
     else:
         facility_ids = main_page.get_all_facility_ids()
