@@ -21,7 +21,7 @@ class AtoutFranceGeneralClient:
         self.base_url = "https://www.classement.atout-france.fr/recherche-etablissements"
         self.headers = {
             # Firefox
-            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:98.0) Gecko/20100101 Firefox/100.0',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
             'Accept': '*/*',
             'Accept-Language': 'fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -89,14 +89,12 @@ class AtoutFranceGeneralClient:
             all_ids.extend(self.get_facility_ids(page))
         return all_ids
 
-
-
 class AtoutFranceFacilityClient:
     def __init__(self, facility_id: str):
         self.base_url = "https://www.classement.atout-france.fr/details-etablissement"
         self.headers = {
             # Firefox
-            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:98.0) Gecko/20100101 Firefox/100.0',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
             'Accept': '*/*',
             'Accept-Language': 'fr,fr-FR;q=0.8,en-US;q=0.5,en;q=0.3',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -367,8 +365,8 @@ def scrape_data(facility_id: int = 15187, full_scrape: bool = False):
         open_date = default_value
 
     try:
-        website_link = soup.find('a', {'class': 'website'})
-        website = website_link['href'] if website_link is not None else None
+        website_link = soup.find('a', {'class': 'facility-detail-link facility-detail-site'})
+        website = website_link['href'] if website_link is not None else default_value
     except AttributeError:
         website = default_value
     
@@ -418,8 +416,8 @@ def ask_file_type():
         return 'xlsx'
 
 def generate_file_name(filetype: str):
-    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M")
-    filename = f"hotels-atout-france-{timestamp}.{filetype}"
+    timestamp = datetime.datetime.now().strftime("%Y_%m_%d_%H%M")
+    filename = f"atout_france_{timestamp}.{filetype}"
     return filename
 
 def save_to_csv(data: List[Dict], filename: str):
@@ -433,9 +431,17 @@ def save_to_excel(data: List[Dict], filename: str):
     wb = openpyxl.Workbook()
     sheet = wb.active
     sheet.title = "Atout France"
-    for row, facility in enumerate(data, start=1):
+
+    # Write headers to the first row
+    headers = data[0].keys()
+    for col, header in enumerate(headers, start=1):
+        sheet.cell(row=1, column=col, value=header)
+
+    # Write data starting from the second row
+    for row, facility in enumerate(data, start=2):
         for col, (key, value) in enumerate(facility.items(), start=1):
             sheet.cell(row=row, column=col, value=value)
+
     wb.save(filename)
     return filename
 
@@ -465,8 +471,29 @@ if __name__ == "__main__":
         exit()
     
     if scrape_type == 'Test':
-        results = scrape_data(10499, True)
-        print(results)
+        default_id = 15187
+        try:
+            facility_id = questionary.text("Enter the facility ID to test (empty will test default value)").unsafe_ask()
+            if facility_id == "":
+                facility_id = default_id
+            else:
+                facility_id = int(facility_id)
+            result = scrape_data(facility_id, True)
+            results = [result]  # make it a list containing a single dictionary
+            print(result)
+        except KeyboardInterrupt:
+            print("User canceled, exiting.")
+            exit()
+        try:
+            if filetype == 'csv':
+                save_to_csv(results, filename)
+            elif filetype == 'xlsx':
+                save_to_excel(results, filename)
+        except KeyboardInterrupt:
+            print("User canceled, exiting.")
+            exit()
+        print(f"Scraped {len(results)} results.")
+        print(f"Saved to {os.path.abspath(filename)}.")
     else:
         facility_ids = main_page.get_all_facility_ids()
         # facility_ids = [1]
@@ -481,4 +508,5 @@ if __name__ == "__main__":
             except KeyboardInterrupt:
                 print("User canceled, exiting.")
                 exit()
-    print(f"Scraped {len(results)} results.")
+        print(f"Scraped {len(results)} results.")
+        print(f"Saved to {os.path.abspath(filename)}.")
