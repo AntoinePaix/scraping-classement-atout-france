@@ -80,7 +80,7 @@ class AtoutFranceGeneralClient:
 
     def get_all_facility_ids(self) -> List[str]:
         all_facility_ids = []
-        for page in tqdm(range(1, 3)):
+        for page in tqdm(range(1, self.get_number_of_pages() + 1)):
             all_facility_ids.extend(self.get_facility_ids(page))
         return all_facility_ids
     
@@ -361,10 +361,17 @@ def scrape_data(facility_id: int = 15187, full_scrape: bool = False):
         af_url = f"https://www.classement.atout-france.fr/details-etablissement?p_p_id=fr_atoutfrance_classementv2_portlet_facility_FacilityPortlet&p_p_lifecycle=0&_fr_atoutfrance_classementv2_portlet_facility_FacilityPortlet_facilityId={facility_id}"
     except AttributeError:
         af_url = default_value
-    return {
-        "ID": facility_id,
-        "Type": type,
-        "Nom": name,
+    result = {
+    "ID": facility_id,
+    "Type": type,
+    "Nom": name,
+}
+
+    if full_scrape:
+        result["Téléphone"] = phone
+        result["Email"] = email
+
+    result.update({
         "Classement": stars,
         "Palace ?": palace,
         "Adresse": address,
@@ -376,10 +383,10 @@ def scrape_data(facility_id: int = 15187, full_scrape: bool = False):
         "Type de logements": accommodation_type,
         "Nombre de logements": capacity_accommodations,
         "Dates d'ouverture": open_date,
-        "Téléphone": phone,
-        "Email": email,
         "Lien AF": af_url
-    }
+    })
+
+    return result
     
 
 def ask_file_type():
@@ -441,28 +448,17 @@ if __name__ == "__main__":
         results = scrape_data(15187, False)
         print(results)
     else:
+        print(f"Gathering all {number_of_results} IDs...")
         facility_ids = main_page.get_all_facility_ids()
         results = []
-        if scrape_type == 'Fast (no contact phone or email)':
-            for facility_id in tqdm(facility_ids):
-                results.append(scrape_data(facility_id, False))
-                try:
-                    if filetype == 'csv':
-                        save_to_csv(results, filename)
-                    elif filetype == 'xlsx':
-                        save_to_excel(results, filename)
-                except KeyboardInterrupt:
-                    print("User canceled, exiting.")
-                    exit()
-        elif scrape_type == 'Full (very long!)':
-            for facility_id in tqdm(facility_ids):
-                results.append(scrape_data(facility_id, True))
-                try:
-                    if filetype == 'csv':
-                        save_to_csv(results, filename)
-                    elif filetype == 'xlsx':
-                        save_to_excel(results, filename)
-                except KeyboardInterrupt:
-                    print("User canceled, exiting.")
-                    exit()    
+        for facility_id in tqdm(facility_ids):
+            results.append(scrape_data(facility_id, False if scrape_type == 'Fast (no contact phone or email)' else True))
+            try:
+                if filetype == 'csv':
+                    save_to_csv(results, filename)
+                elif filetype == 'xlsx':
+                    save_to_excel(results, filename)
+            except KeyboardInterrupt:
+                print("User canceled, exiting.")
+                exit()
     print(f"Scraped {len(results)} results.")
